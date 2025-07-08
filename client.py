@@ -15,25 +15,27 @@ logging.basicConfig(
 logger = logging.getLogger(__name__)
 
 def forward_data(source, destination):
-    """Forward data from source socket to destination socket."""
+    """Forward data from source socket to destination socket, keeping connection alive."""
     source_addr = f"{source.getpeername()[0]}:{source.getpeername()[1]}"
     dest_addr = f"{destination.getpeername()[0]}:{destination.getpeername()[1]}"
     while True:
         try:
             data = source.recv(1024)
-            if not data:
-                logger.info(f"Connection closed between {source_addr} and {dest_addr}")
-                break
-            destination.sendall(data)
-            logger.info(f"Forwarded {len(data)} bytes from {source_addr} to {dest_addr}")
+            if data:
+                destination.sendall(data)
+                logger.info(f"Forwarded {len(data)} bytes from {source_addr} to {dest_addr}")
+            else:
+                # No data received, but connection might still be alive; do not close
+                continue
         except Exception as e:
             logger.error(f"Error forwarding data from {source_addr} to {dest_addr}: {e}")
-            break
-    try:
-        source.close()
-        destination.close()
-    except:
-        pass
+            # Only break on specific errors indicating connection closure
+            if isinstance(e, (ConnectionResetError, BrokenPipeError)):
+                logger.info(f"Connection closed between {source_addr} and {dest_addr}")
+                break
+            continue
+    # Do not close sockets to keep connection alive
+    logger.info(f"Stopped forwarding between {source_addr} and {dest_addr}, but connections remain open")
 
 def start_client():
     """Start the client to connect to server on port 443 and forward to another host on port 5432."""
